@@ -1,0 +1,18 @@
+[project]
+name = "argumentation"
+version = "0.1.0"
+description = "Python argument parser for complex applications"
+readme = "README.md"
+authors = [
+    { email = "carsten@kragelund.dev" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "pydantic>=2.10.6",
+    "pyyaml>=6.0.2",
+    "tomli>=2.2.1 ; python_full_version < '3.11'",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
