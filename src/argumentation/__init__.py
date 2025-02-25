@@ -149,6 +149,9 @@ def add_arg(arg_parser, config, config_path, arg_name, arg_type, arg_kwargs):
         and isclass(arg_type)
         and issubclass(arg_type, ArgumentationModel)
     ):
+        raise NotImplementedError(
+            f"Nested ArgumentationModels are not supported yet. Got {arg_type}"
+        )
         for key, field in arg_type.model_fields.items():
             add_arg(
                 arg_parser,
