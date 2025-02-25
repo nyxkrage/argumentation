@@ -1,0 +1,7 @@
+data_structure:
+  a: "test"
+  b: 123
+  c: 6.9
+dictionary:
+  a: "hello"
+  b: "world"

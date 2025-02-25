@@ -4,8 +4,18 @@ import sys
 from argparse import ArgumentParser
 from copy import deepcopy
 from dataclasses import dataclass
-from inspect import signature
-from typing import Any, Optional, Tuple, Type
+from inspect import signature, isclass
+from types import GenericAlias
+from typing import (
+    Any,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+    get_origin,
+    get_args,
+)
 
 from pydantic import BaseModel, ConfigDict, create_model
 from pydantic.fields import FieldInfo
@@ -63,6 +73,7 @@ class ConfigFileAction(argparse.Action):
 
         try:
             data = parse_function(open(values, "r"))
+            data["__file__"] = values
         except Exception as e:
             raise ValueError(f"Config file {values} is not valid") from e
 
@@ -73,17 +84,111 @@ class ArgumentationModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+def add_arg(arg_parser, config, config_path, arg_name, arg_type, arg_kwargs):
+    if arg_type is bool:
+        arg_kwargs["action"] = arg_kwargs.get("action", "store_true")
+        arg_parser.add_argument(
+            f"--{arg_name.replace('_', '-')}",
+            **arg_kwargs,
+        )
+        return
+    if arg_type in [bool, int, float, str]:
+        arg_kwargs["type"] = arg_type
+        arg_parser.add_argument(
+            f"--{arg_name.replace('_', '-')}",
+            **arg_kwargs,
+        )
+        return
+    if get_origin(arg_type) is list:
+        inner_type = get_args(arg_type)[0]
+        arg_kwargs["nargs"] = arg_kwargs.get("nargs", "+")
+        arg_kwargs["action"] = arg_kwargs.get("action", "extend")
+        add_arg(arg_parser, config, config_path, arg_name, inner_type, arg_kwargs)
+        return
+    if get_origin(arg_type) is tuple:
+        inner_types = get_args(arg_type)
+        arg_kwargs["nargs"] = arg_kwargs.get("nargs", len(inner_types))
+        arg_kwargs["action"] = arg_kwargs.get("action", "extend")
+        add_arg(
+            arg_parser, config, config_path, arg_name, Union[inner_types], arg_kwargs
+        )
+        return
+    if get_origin(arg_type) is Literal:
+        allowed_values = get_args(arg_type)
+        arg_kwargs["choices"] = allowed_values
+        # Determine the type from the allowed values
+        if allowed_values and all(
+            isinstance(val, type(allowed_values[0])) for val in allowed_values
+        ):
+            arg_kwargs["type"] = type(allowed_values[0])
+        arg_parser.add_argument(
+            f"--{arg_name.replace('_', '-')}",
+            **arg_kwargs,
+        )
+        return
+    if get_origin(arg_type) is Union:
+        inner_types = get_args(arg_type)
+
+        def try_parse(val):
+            for typ in inner_types:
+                try:
+                    return typ(val)
+                except ValueError:
+                    pass
+            raise ValueError(f"Could not parse {val} as {inner_types}")
+
+        arg_kwargs["type"] = try_parse
+        arg_parser.add_argument(
+            f"--{arg_name.replace('_', '-')}",
+            **arg_kwargs,
+        )
+        return
+
+    if (
+        type(arg_type) is not GenericAlias
+        and isclass(arg_type)
+        and issubclass(arg_type, ArgumentationModel)
+    ):
+        for key, field in arg_type.model_fields.items():
+            add_arg(
+                arg_parser,
+                config,
+                config_path,
+                key,
+                field.annotation,
+                {
+                    "required": field.is_required()
+                    and getattr(config, key, None) is None,
+                    "help": field.description,
+                },
+            )
+        return
+
+    if (
+        type(arg_type) is not GenericAlias
+        and isclass(arg_type)
+        and issubclass(arg_type, BaseModel)
+    ):
+        arg_kwargs["type"] = arg_type.model_validate
+    del arg_kwargs["help"]
+    arg_parser.add_argument(
+        f"--{arg_name.replace('_', '-')}-config",
+        action=ConfigFileAction,
+        dest=arg_name,
+        help=f"Path to config file for {arg_name} (defaults to main config file)",
+        default=config_path,
+        **arg_kwargs,
+    )
+
+
 @dataclass
 class Argumentation:
     description: str
-    external_config: str = None
 
     def run(func: callable, *args, **kwargs):
         args_type = list(signature(func).parameters.values())[0].annotation
         if not issubclass(args_type, ArgumentationModel):
             raise TypeError("First argument must be a Pydantic model")
-
-        sys.argv = [arg.replace("_", "-") if "_" in arg else arg for arg in sys.argv]
 
         config_arg_parser = ArgumentParser(func.__name__, add_help=False)
         config_arg_parser.add_argument(
@@ -91,9 +196,12 @@ class Argumentation:
         )
         config_args = config_arg_parser.parse_known_args()[0]
         config = None
+        config_file = None
         if config_args.config is not None:
             partial_args_type = partial_model(args_type)
-            config = partial_args_type.model_validate(config_args.config, strict=True)
+            config_file = config_args.config["__file__"]
+            del config_args.config["__file__"]
+            config = partial_args_type.model_validate(config_args.config)
 
         arg_parser = ArgumentParser(func.__name__)
         arg_parser.add_argument(
@@ -104,19 +212,48 @@ class Argumentation:
             default=None,
         )
         for key, field in args_type.model_fields.items():
-            arg_parser.add_argument(
-                f"--{key.replace('_', '-')}",
-                type=field.annotation,
-                required=field.is_required() and getattr(config, key, None) is None,
-                default=field.get_default(),
-                help=field.description,
+            add_arg(
+                arg_parser,
+                config,
+                config_file,
+                key,
+                field.annotation,
+                {
+                    "required": field.is_required()
+                    and getattr(config, key, None) is None,
+                    "help": field.description,
+                },
             )
+            # argument_kwargs = type_argument_kwargs.get(
+            #     get_origin(field.annotation) or field.annotation, {}
+            # )
+            # if not (
+            #     argument_kwargs.get("action", "") == "store_true"
+            #     or argument_kwargs.get("action", "") == "store_false"
+            # ):
+            #     if get_origin(field.annotation) is not None:
+            #         # parameterized type (a list, unsure if others?)
+            #         argument_kwargs["type"] = get_args(field.annotation)[-1]
+            #     else:
+            #         argument_kwargs["type"] = field.annotation
+
+            # if field.get_default(call_default_factory=None) is not PydanticUndefined:
+            #     argument_kwargs["default"] = field.get_default(
+            #         call_default_factory=False
+            #     )
+            # # print(key)
+            # # print(argument_kwargs)
+            # arg_parser.add_argument(
+            #     f"--{key.replace('_', '-')}",
+            #     required=field.is_required() and getattr(config, key, None) is None,
+            #     help=field.description,
+            #     **argument_kwargs,
+            # )
         argv = arg_parser.parse_args()
 
-        # merge argv and config excluding the config key from argv
         argv_dict = vars(argv)
         argv_dict.pop("config", None)
         if config is not None:
             argv_dict.update(config.model_dump(exclude_defaults=True))
-        argv = args_type.model_validate(vars(argv))
+        argv = args_type.model_validate(argv_dict)
         func(argv, *args, **kwargs)
