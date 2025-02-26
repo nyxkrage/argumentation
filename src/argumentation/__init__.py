@@ -17,7 +17,7 @@ from typing import (
     get_args,
 )
 
-from pydantic import BaseModel, ConfigDict, create_model
+from pydantic import BaseModel, ConfigDict, ValidationError, create_model
 from pydantic.fields import FieldInfo
 
 
@@ -258,5 +258,12 @@ class Argumentation:
         argv_dict.pop("config", None)
         if config is not None:
             argv_dict.update(config.model_dump(exclude_defaults=True))
-        argv = args_type.model_validate(argv_dict)
+        try:
+            argv = args_type.model_validate(argv_dict)
+        except ValidationError as e:
+            print(
+                f"Invalid arguments: {e}\n\nRun with --help for more information",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         func(argv, *args, **kwargs)
