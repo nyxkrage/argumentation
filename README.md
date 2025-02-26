@@ -1,22 +1,55 @@
 # Argumentation
+Argumentation is a Python library that bridges Pydantic models with argparse to create robust, type-safe command-line interfaces with minimal boilerplate. Define your application's configuration using Pydantic models, and Argumentation handles the command-line parsing, validation, and configuration file loading automatically.
 
-Python argument parser for complex applications
+## Features
+- Type-safe Configuration: Utilize Pydantic's validation system for command-line arguments
+- Configuration Files: Support for TOML, YAML, and JSON configuration files
+- Automatic CLI Generation: Convert your Pydantic models into command-line interfaces automatically
+- Rich Type Support: Handles complex types including:
+    - Basic types (bool, int, float, str)
+    - Lists and tuples
+    - Literal types with choices
+    - Union types
+    - Custom Pydantic models
 
-## TODO
+## Installation
+1. uv (recommended)
+```bash
+uv add argumentation
+```
+2. poetry
+```bash
+poetry add argumentation
+```
+3. pip
+```bash
+pip install argumentation
+```
 
-- [x] Support for more types
-    - [x] Booleans
-    - [x] Lists
-    - [x] Enums
-    - [x] Objects? (Let user specify "extra_config_file" that is a config file that contains the object, defaulting to using the same config file as --config)
-        - Need to validate that the model doesn't have any name conflicts
-- [ ] Environment variables
-- [ ] Passthrough options from Argumentation annotation to add_argument
-- [ ] Subcommands/subparsers?
-- [ ] Manpage generation
-- [ ] Shell completion generation
-- [ ] Add examples
-- [ ] Add tests
-- [ ] Add documentation
-- [ ] Add CI
-- [ ] Spruce up README
+## Usage
+
+1. Create your configuration model using the ArgumentationModel
+1. Create your main function which takes the configuration as an argument
+1. Call the argumentation.run function with your main function
+
+See `examples/simple.py` for more details
+
+```bash
+python examples/simple.py --name "My Application" --debug --port 5000 --hosts localhost 127.0.0.1
+```
+
+### Configuration Files
+
+Argumentation supports loading configuration from TOML, YAML, and JSON files.
+```bash
+python examples/config.py --config examples/config.yaml
+```
+
+You can also override configuration file values from the command line.
+```bash
+python examples/simple.py --config examples/config.yaml --port 8888
+```
+
+## License
+
+Argumentation is licensed under the MIT License. See the LICENSE file for details.

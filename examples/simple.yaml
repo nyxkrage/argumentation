@@ -1,0 +1,6 @@
+name: My App from YAML
+debug: true
+port: 9000
+hosts:
+  - api.example.com
+  - backend.example.com
