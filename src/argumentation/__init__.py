@@ -228,31 +228,6 @@ class Argumentation:
                     "help": field.description,
                 },
             )
-            # argument_kwargs = type_argument_kwargs.get(
-            #     get_origin(field.annotation) or field.annotation, {}
-            # )
-            # if not (
-            #     argument_kwargs.get("action", "") == "store_true"
-            #     or argument_kwargs.get("action", "") == "store_false"
-            # ):
-            #     if get_origin(field.annotation) is not None:
-            #         # parameterized type (a list, unsure if others?)
-            #         argument_kwargs["type"] = get_args(field.annotation)[-1]
-            #     else:
-            #         argument_kwargs["type"] = field.annotation
-
-            # if field.get_default(call_default_factory=None) is not PydanticUndefined:
-            #     argument_kwargs["default"] = field.get_default(
-            #         call_default_factory=False
-            #     )
-            # # print(key)
-            # # print(argument_kwargs)
-            # arg_parser.add_argument(
-            #     f"--{key.replace('_', '-')}",
-            #     required=field.is_required() and getattr(config, key, None) is None,
-            #     help=field.description,
-            #     **argument_kwargs,
-            # )
         argv = arg_parser.parse_args()
 
         argv_dict = vars(argv)
