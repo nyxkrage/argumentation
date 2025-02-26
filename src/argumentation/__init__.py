@@ -224,6 +224,7 @@ class Argumentation:
                 {
                     "required": field.is_required()
                     and getattr(config, key, None) is None,
+                    "default": field.get_default(),
                     "help": field.description,
                 },
             )
